@@ -303,13 +303,45 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome. This project uses a strict release flow:
+
+1. Create your feature/fix branch from `develop`
+2. Open a PR to `develop`
+3. After validation, changes are promoted to `release-candidate`
+4. Only PRs from `release-candidate` are allowed into `main`
+
+### Release Flow Rules
+
+- Push to `develop` generates an **alpha** pre-release version:
+  - Format: `vX.Y.Z.alpha.N`
+- Push to `release-candidate` generates a **beta** pre-release version:
+  - Format: `vX.Y.Z.beta.A.B.C`
+- Push/merge to `main` generates a **stable** release version:
+  - Format: `vX.Y.Z`
+
+### Main Merge Policy
+
+- Target branch `main` only accepts PRs coming from `release-candidate`
+- PR must contain exactly one bump label:
+  - `patch` or `semver:patch`
+  - `minor` or `semver:minor`
+  - `major` or `semver:major`
+
+### Version Bump Semantics (main)
+
+- `patch`: `X.Y.Z` -> `X.Y.(Z+1)`
+- `minor`: `X.Y.Z` -> `X.(Y+1).0`
+- `major`: `X.Y.Z` -> `(X+1).0.0`
+
+### Suggested Contribution Steps
 
 1. Fork the repository
-2. Create a branch for your feature (`git checkout -b feature/MyFeature`)
+2. Create a branch from `develop` (`git checkout -b feature/MyFeature develop`)
 3. Commit your changes (`git commit -am 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/MyFeature`)
-5. Open a Pull Request
+4. Push your branch (`git push origin feature/MyFeature`)
+5. Open a PR to `develop`
+6. Promote tested changes to `release-candidate`
+7. Open PR from `release-candidate` to `main` with one required bump label
 
 ### Development Guidelines
 

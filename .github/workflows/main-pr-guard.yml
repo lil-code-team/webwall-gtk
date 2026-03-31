@@ -1,0 +1,50 @@
+name: Main PR Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce source branch and semver label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const headRef = pr.head.ref;
+            const allowedHeadRef = 'release-candidate';
+
+            if (headRef !== allowedHeadRef) {
+              core.setFailed(`PRs to main must come from '${allowedHeadRef}', got '${headRef}'.`);
+              return;
+            }
+
+            const labelNames = (pr.labels || []).map((l) => l.name);
+            const allowed = new Set(['major', 'minor', 'patch', 'semver:major', 'semver:minor', 'semver:patch']);
+            const matches = labelNames.filter((name) => allowed.has(name));
+
+            if (matches.length === 0) {
+              core.setFailed('Missing release bump label on PR. Add one of: major, minor, patch (or semver:major|minor|patch).');
+              return;
+            }
+
+            if (matches.length > 1) {
+              core.setFailed(`Use only one bump label. Found: ${matches.join(', ')}`);
+              return;
+            }
+
+            core.info(`PR guard OK. Source: ${headRef}, bump label: ${matches[0]}`);

@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - develop
+      - release-candidate
 
 jobs:
   build:
