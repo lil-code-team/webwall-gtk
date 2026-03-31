@@ -88,7 +88,7 @@ jobs:
 
       - name: Create source archive
         run: |
-          tar --exclude='.git' --exclude='.github' -czf wallpaper-src.tar.gz .
+          git archive --format=tar.gz --output=wallpaper-src.tar.gz HEAD
 
       - name: Create or update release and upload assets
         env:
