@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Doom Fire</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="fire"></canvas>
+    <script>
+      const canvas = document.getElementById("fire");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      const palette = [
+        [7, 7, 7],
+        [31, 7, 7],
+        [47, 15, 7],
+        [71, 15, 7],
+        [87, 23, 7],
+        [103, 31, 7],
+        [119, 31, 7],
+        [143, 39, 7],
+        [159, 47, 7],
+        [175, 63, 7],
+        [191, 71, 7],
+        [199, 71, 7],
+        [223, 79, 7],
+        [223, 87, 7],
+        [223, 87, 7],
+        [215, 95, 7],
+        [215, 95, 7],
+        [215, 103, 15],
+        [207, 111, 15],
+        [207, 119, 15],
+        [207, 127, 15],
+        [207, 135, 23],
+        [199, 135, 23],
+        [199, 143, 23],
+        [199, 151, 31],
+        [191, 159, 31],
+        [191, 159, 31],
+        [191, 167, 39],
+        [191, 167, 39],
+        [191, 175, 47],
+        [183, 175, 47],
+        [183, 183, 47],
+        [183, 183, 55],
+        [207, 207, 111],
+        [223, 223, 159],
+        [239, 239, 199],
+        [255, 255, 255],
+      ];
+
+      let cols = 0;
+      let rows = 0;
+      let fire = [];
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        cols = Math.max(120, Math.floor(canvas.width / 5));
+        rows = Math.max(80, Math.floor(canvas.height / 5));
+        fire = new Uint8Array(cols * rows);
+
+        for (let x = 0; x < cols; x++) {
+          fire[(rows - 1) * cols + x] = palette.length - 1;
+        }
+      }
+
+      function updateFire() {
+        for (let y = 1; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            const src = y * cols + x;
+            const decay = (Math.random() * 3) | 0;
+            const dstX = Math.max(
+              0,
+              Math.min(cols - 1, x + ((Math.random() * 3) | 0) - 1),
+            );
+            const dst = (y - 1) * cols + dstX;
+            fire[dst] = Math.max(0, fire[src] - decay);
+          }
+        }
+      }
+
+      function renderFire() {
+        const img = ctx.createImageData(cols, rows);
+        for (let i = 0; i < fire.length; i++) {
+          const c = palette[fire[i]];
+          const p = i * 4;
+          img.data[p] = c[0];
+          img.data[p + 1] = c[1];
+          img.data[p + 2] = c[2];
+          img.data[p + 3] = 255;
+        }
+
+        const off = document.createElement("canvas");
+        off.width = cols;
+        off.height = rows;
+        off.getContext("2d").putImageData(img, 0, 0);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+      }
+
+      function loop() {
+        updateFire();
+        renderFire();
+        requestAnimationFrame(loop);
+      }
+
+      resize();
+      window.addEventListener("resize", resize);
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
