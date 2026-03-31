@@ -21,11 +21,18 @@ jobs:
             build-essential \
             libgtk-3-dev \
             libgtk-layer-shell-dev \
-            libwebkit2gtk-4.0-dev \
             pkg-config
 
+          if apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
+            sudo apt-get install -y libwebkit2gtk-4.1-dev
+            echo "WEBKIT_PKG=webkit2gtk-4.1" >> "$GITHUB_ENV"
+          else
+            sudo apt-get install -y libwebkit2gtk-4.0-dev
+            echo "WEBKIT_PKG=webkit2gtk-4.0" >> "$GITHUB_ENV"
+          fi
+
       - name: Build project
-        run: gcc wallpaper.c -o wallpaper `pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0 webkit2gtk-4.0`
+        run: gcc wallpaper.c -o wallpaper `pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0 $WEBKIT_PKG`
 
       - name: Check build artifacts
         run: |
@@ -34,7 +41,7 @@ jobs:
           ls -lh wallpaper
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wallpaper-validation
           path: wallpaper
