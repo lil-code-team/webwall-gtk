@@ -4,10 +4,13 @@ on:
   push:
     branches:
       - main
+      - develop
+      - release-candidate
 
 permissions:
   contents: write
   packages: write
+  pull-requests: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -18,6 +21,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.new_version }}
       should_release: ${{ steps.version.outputs.should_release }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      release_channel: ${{ steps.version.outputs.release_channel }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,23 +50,83 @@ jobs:
 
       - name: Generate version
         id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get last tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Last tag: $LAST_TAG"
+          BRANCH="${GITHUB_REF_NAME}"
+          LAST_STABLE=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+          if [ -z "$LAST_STABLE" ]; then
+            LAST_STABLE="v0.0.0"
+          fi
 
-          # Parse version
-          VERSION=${LAST_TAG#v}
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f2)
-          PATCH=$(echo $VERSION | cut -d. -f3)
+          VERSION=${LAST_STABLE#v}
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
 
-          # Increment patch version
-          PATCH=$((PATCH + 1))
-          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          BUMP="patch"
+          IS_PRERELEASE="true"
+          CHANNEL="alpha"
 
+          if [ "$BRANCH" = "develop" ]; then
+            LAST_ALPHA=$(git tag -l "v${MAJOR}.${MINOR}.${PATCH}.alpha.*" | grep -E "^v${MAJOR}\.${MINOR}\.${PATCH}\.alpha\.[0-9]+$" | sort -V | tail -n1)
+            if [ -n "$LAST_ALPHA" ]; then
+              ALPHA_N=${LAST_ALPHA##*.}
+              ALPHA_N=$((ALPHA_N + 1))
+            else
+              ALPHA_N=1
+            fi
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}.alpha.${ALPHA_N}"
+            CHANNEL="alpha"
+            IS_PRERELEASE="true"
+          elif [ "$BRANCH" = "release-candidate" ]; then
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}.beta.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}.${GITHUB_RUN_ID}"
+            CHANNEL="beta"
+            IS_PRERELEASE="true"
+          else
+            PR_NUMBER=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number' 2>/dev/null || true)
+
+            if [ -z "$PR_NUMBER" ]; then
+              echo "ERROR: Could not find PR associated with commit ${GITHUB_SHA} on main."
+              echo "Only merges from release-candidate with bump label are allowed."
+              exit 1
+            fi
+
+            LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --jq '.[].name' 2>/dev/null || true)
+            if echo "$LABELS" | grep -Eq '^(major|semver:major)$'; then
+              BUMP="major"
+            elif echo "$LABELS" | grep -Eq '^(minor|semver:minor)$'; then
+              BUMP="minor"
+            elif echo "$LABELS" | grep -Eq '^(patch|semver:patch)$'; then
+              BUMP="patch"
+            else
+              echo "ERROR: PR #${PR_NUMBER} is missing bump label (major/minor/patch or semver:major/minor/patch)."
+              exit 1
+            fi
+
+            if [ "$BUMP" = "major" ]; then
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+            elif [ "$BUMP" = "minor" ]; then
+              MINOR=$((MINOR + 1))
+              PATCH=0
+            else
+              PATCH=$((PATCH + 1))
+            fi
+
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            CHANNEL="stable"
+            IS_PRERELEASE="false"
+          fi
+
+          echo "Branch: $BRANCH"
+          echo "Channel: $CHANNEL"
+          echo "Last stable: $LAST_STABLE"
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           echo "should_release=true" >> $GITHUB_OUTPUT
+          echo "is_prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+          echo "release_channel=${CHANNEL}" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
 
       - name: Upload build artifacts
@@ -95,10 +160,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.build.outputs.version }}"
+          IS_PRERELEASE="${{ needs.build.outputs.is_prerelease }}"
+          CHANNEL="${{ needs.build.outputs.release_channel }}"
           NOTES=$(cat <<'EOF'
           ## Changelog
           - Build date: ${{ github.event.head_commit.timestamp }}
           - Commit: ${{ github.sha }}
+          - Branch: ${{ github.ref_name }}
+          - Channel: ${{ needs.build.outputs.release_channel }}
 
           ### Assets
           - **wallpaper**: Executável do aplicativo
@@ -108,7 +177,17 @@ jobs:
           )
 
           if ! gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release create "$VERSION" --title "Release $VERSION" --notes "$NOTES"
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              gh release create "$VERSION" --title "Release $VERSION" --notes "$NOTES" --prerelease
+            else
+              gh release create "$VERSION" --title "Release $VERSION" --notes "$NOTES"
+            fi
+          else
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              gh release edit "$VERSION" --prerelease --title "Release $VERSION" --notes "$NOTES"
+            else
+              gh release edit "$VERSION" --latest --title "Release $VERSION" --notes "$NOTES"
+            fi
           fi
 
           ASSETS=()
